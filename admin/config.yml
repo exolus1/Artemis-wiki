@@ -1,0 +1,42 @@
+backend:
+  name: turbo-github
+  # Sustituye este texto por el Site ID que te entregue Decap Turbo.
+  turbo_site_id: "5e4d23cb-a040-438b-ac4c-2505fecf9d96"
+  branch: main
+
+site_url: https://artemisguides.github.io/Artemis-wiki
+display_url: https://artemisguides.github.io/Artemis-wiki
+logo_url: https://artemisguides.github.io/Artemis-wiki/
+
+media_folder: "assets/uploads"
+public_folder: "/Artemis-wiki/assets/uploads"
+
+locale: "es"
+
+collections:
+  - name: "guias"
+    label: "Guías de Artemis"
+    label_singular: "Guía"
+    folder: "guias"
+    create: true
+    delete: true
+    extension: "md"
+    format: "frontmatter"
+    slug: "{{slug}}"
+    summary: "{{title}} — {{category}}"
+    sortable_fields: ["order", "title", "category"]
+    fields:
+      - { label: "Título", name: "title", widget: "string" }
+      - { label: "Resumen", name: "description", widget: "text" }
+      - label: "Categoría"
+        name: "category"
+        widget: "select"
+        options:
+          - { label: "Progreso", value: "progreso" }
+          - { label: "Oficios", value: "oficios" }
+          - { label: "Combate", value: "combate" }
+          - { label: "Objetos", value: "objetos" }
+      - { label: "Icono (emoji)", name: "icon", widget: "string", default: "✧" }
+      - { label: "Orden", name: "order", widget: "number", default: 50, value_type: "int" }
+      - { label: "Publicada", name: "published", widget: "boolean", default: true }
+      - { label: "Contenido", name: "body", widget: "markdown" }
