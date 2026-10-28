@@ -17,7 +17,7 @@
 <header class="topbar"><div class="wrap nav">
 <a class="brand" href="#" aria-label="Artemis Wiki inicio"><span class="brandmark">☾</span><span>ARTEMIS WIKI<small>El archivo de tu aventura</small></span></a>
 <nav class="navlinks"><a href="#guias">Guías</a><a href="#categorias">Categorías</a><a href="#novedades">Novedades</a></nav>
-<div style="display:flex;gap:8px;align-items:center"><button class="navbtn" id="openEditor" type="button">Editar guías</button><a class="navbtn" href="#guias">Explorar wiki ↗</a></div>
+<div style="display:flex;gap:8px;align-items:center"><a class="navbtn" href="/Artemis-wiki/admin/">Editar guías ↗</a><a class="navbtn" href="#guias">Explorar wiki ↗</a></div>
 </div></header>
 <main>
 <div class="wrap">
@@ -67,7 +67,7 @@
 <footer class="wrap footer"><span>☾ ARTEMIS WIKI · Proyecto comunitario</span><span>Guías en español · Diseño adaptable · Discord</span></footer>
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modalbox"><div class="modalhead"><h2 id="modalTitle">Guía</h2><button class="close" id="closeModal" aria-label="Cerrar">Cerrar ✕</button></div><div id="modalContent"></div><p class="note">Contenido inicial de demostración. Puedes sustituirlo por la guía oficial cuando esté lista.</p></div></div>
 <script>
-const input=document.getElementById('searchInput'), cards=[...document.querySelectorAll('.card')], filters=[...document.querySelectorAll('.filter')], empty=document.getElementById('empty');let activeFilter='todo';
+const input=document.getElementById('searchInput'); let cards=[...document.querySelectorAll('.card')]; const filters=[...document.querySelectorAll('.filter')], empty=document.getElementById('empty');let activeFilter='todo';
 function norm(s){return (s||'').toLocaleLowerCase('es').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'')}
 function applyFilter(){const q=norm(input.value.trim());let shown=0;cards.forEach(c=>{const matchText=norm(c.innerText+' '+c.dataset.keywords).includes(q);const matchCat=activeFilter==='todo'||c.dataset.category===activeFilter;const visible=matchText&&matchCat;c.classList.toggle('hidden',!visible);if(visible)shown++});empty.style.display=(shown===0&&(q.length>0||activeFilter!=='todo'))?'block':'none'}
 document.getElementById('searchForm').addEventListener('submit',e=>{e.preventDefault();applyFilter();document.getElementById('guias').scrollIntoView({behavior:'smooth'})});
@@ -85,18 +85,91 @@ const articles={
 cards.forEach(c=>c.addEventListener('click',()=>{const h=c.querySelector('h3').textContent;const a=articles[h]||['Guía Artemis','Contenido por completar.'];title.textContent=a[0];content.innerHTML='<p>'+a[1]+'</p>';modal.classList.add('open')}));
 function close(){modal.classList.remove('open')}document.getElementById('closeModal').addEventListener('click',close);modal.addEventListener('click',e=>{if(e.target===modal)close()});document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
 
-// Editor visual de prototipo: permite modificar guías en este navegador y exportarlas.
-const editorModal=document.getElementById('editorModal'), guideSelect=document.getElementById('editGuide'), editTitle=document.getElementById('editTitle'), editBody=document.getElementById('editBody'), editorStatus=document.getElementById('editorStatus');
-let guideDrafts={};
-try{guideDrafts=JSON.parse(localStorage.getItem('artemisGuideDrafts')||'{}')}catch(e){guideDrafts={}}
-function guideNames(){return Object.keys(articles)}
-function loadEditorGuide(){const name=guideSelect.value;const data=guideDrafts[name]||articles[name];editTitle.value=data[0];editBody.value=data[1];editorStatus.textContent=''}
-function renderEditorOptions(){guideSelect.innerHTML='';guideNames().forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;guideSelect.appendChild(o)});loadEditorGuide()}
-document.getElementById('openEditor').addEventListener('click',()=>{renderEditorOptions();editorModal.classList.add('open')});
-document.getElementById('closeEditor').addEventListener('click',()=>editorModal.classList.remove('open'));
-editorModal.addEventListener('click',e=>{if(e.target===editorModal)editorModal.classList.remove('open')});
-guideSelect.addEventListener('change',loadEditorGuide);
-document.getElementById('saveDraft').addEventListener('click',()=>{guideDrafts[guideSelect.value]=[editTitle.value,editBody.value];try{localStorage.setItem('artemisGuideDrafts',JSON.stringify(guideDrafts));editorStatus.textContent='Borrador guardado en este navegador.'}catch(e){editorStatus.textContent='No se pudo guardar localmente. Usa Exportar JSON.'}});
-document.getElementById('exportGuides').addEventListener('click',()=>{const data={...articles,...guideDrafts};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='artemis-wiki-guias.json';a.click();URL.revokeObjectURL(url);editorStatus.textContent='Archivo JSON exportado. Debes integrar/subir el contenido para publicarlo.'});
+
+// Las guías publicadas se cargarán desde /guias cuando existan archivos creados en el CMS.
+// El botón "Editar guías" abre el panel protegido de Decap CMS.
+
+// Carga las guías Markdown administradas desde Decap CMS en GitHub.
+// El repositorio debe ser público para que la página pueda leer el índice sin credenciales.
+(async function loadPublishedGuides() {
+  const repo = "artemisguides/Artemis-wiki";
+  const branch = "main";
+  const api = `https://api.github.com/repos/${repo}/contents/guias?ref=${branch}`;
+  const grid = document.getElementById("guideGrid");
+  if (!grid) return;
+
+  function frontMatter(text) {
+    const match = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+    const meta = {};
+    if (!match) return { meta, body: text };
+    match[1].split(/\r?\n/).forEach(line => {
+      const m = line.match(/^([A-Za-z0-9_-]+):\s*(.*?)\s*$/);
+      if (m) meta[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    });
+    return { meta, body: match[2] || "" };
+  }
+  function escapeHtml(s) {
+    return String(s || "").replace(/[&<>"']/g, ch => ({
+      "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+    }[ch]));
+  }
+  function markdownToHtml(md) {
+    // Renderizado básico sin ejecutar HTML aportado por una guía.
+    return escapeHtml(md)
+      .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+      .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+      .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/^\- (.+)$/gm, "• $1")
+      .split(/\n{2,}/).map(p => p.trim() ? `<p>${p.replace(/\n/g, "<br>")}</p>` : "").join("");
+  }
+  try {
+    const res = await fetch(api, { headers: { "Accept": "application/vnd.github+json" } });
+    if (!res.ok) return; // Mantiene las tarjetas de ejemplo si la carpeta aún no existe.
+    const files = (await res.json()).filter(f => f.type === "file" && f.name.endsWith(".md"));
+    const guides = [];
+    for (const file of files) {
+      const response = await fetch(`https://raw.githubusercontent.com/${repo}/${branch}/guias/${encodeURIComponent(file.name)}`);
+      if (!response.ok) continue;
+      const parsed = frontMatter(await response.text());
+      const m = parsed.meta;
+      if (String(m.published || "true").toLowerCase() === "false") continue;
+      guides.push({
+        title: m.title || file.name.replace(/\.md$/, "").replace(/-/g, " "),
+        description: m.description || "Guía de Artemis.",
+        category: m.category || "progreso",
+        icon: m.icon || "✧",
+        order: Number(m.order || 999),
+        body: parsed.body
+      });
+    }
+    if (!guides.length) return;
+    guides.sort((a,b) => a.order - b.order || a.title.localeCompare(b.title, "es"));
+    grid.innerHTML = "";
+    guides.forEach(g => {
+      const card = document.createElement("article");
+      card.className = "card";
+      card.dataset.category = g.category;
+      card.dataset.keywords = `${g.title} ${g.description} ${g.category} ${g.body}`;
+      card.innerHTML = `<div class="cardtop"><span class="cardicon">${escapeHtml(g.icon)}</span><span class="tag">${escapeHtml(g.category)}</span></div>
+        <div class="cardbody"><h3>${escapeHtml(g.title)}</h3><p>${escapeHtml(g.description)}</p>
+        <div class="cardfoot"><span>GUÍA ARTEMIS</span><span class="arrow">↗</span></div></div>`;
+      card.addEventListener("click", () => {
+        title.textContent = g.title;
+        content.innerHTML = markdownToHtml(g.body);
+        modal.classList.add("open");
+      });
+      grid.appendChild(card);
+    });
+    // Actualiza la lista usada por el buscador y los filtros.
+    cards = [...document.querySelectorAll(".card")];
+    applyFilter();
+  } catch (err) {
+    console.warn("Artemis Wiki: no se pudieron cargar las guías publicadas.", err);
+  }
+})();
+
 </script>
 </body></html>
